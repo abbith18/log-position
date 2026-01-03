@@ -82,13 +82,21 @@
                                         icon="keyboard"
                                         label="Camera Shutter / Volume Button Mode"
                                         color="green"
-                                        class="q-mb-md full-width"
+                                        class="q-mb-sm full-width"
                                     >
                                         <q-tooltip>
                                             Most cheap Bluetooth shutter buttons act as a keyboard (Volume Up).
                                             Enable this to listen for volume keys.
                                         </q-tooltip>
                                     </q-toggle>
+
+                                    <!-- Debug info to help user see what their button is sending -->
+                                    <div v-if="keyboardMode" class="q-pa-sm bg-grey-2 rounded-borders text-caption text-center">
+                                        Last Key Detected: <strong>{{ lastKey || 'None (Press a button)' }}</strong>
+                                        <div class="text-grey-6 q-mt-xs" style="font-size: 10px; line-height: 1.2;">
+                                            Note: If phone volume changes but this text doesn't, Android is blocking the signal. Try the button labeled "Android" or "Enter" on your remote.
+                                        </div>
+                                    </div>
 
                                     <div v-if="!keyboardMode" class="q-pa-sm bg-grey-3 rounded-borders">
                                         <div class="row items-center justify-between">
@@ -187,6 +195,7 @@
                     const locations = ref([]);
                     const loading = ref(true);
                     const keyboardMode = ref(true); // Default to keyboard mode
+                    const lastKey = ref('');
                     
                     // Bluetooth State
                     const bleDevice = ref(null);
@@ -249,6 +258,8 @@
                     onMounted(() => {
                         loadLocations();
                         window.addEventListener('keydown', handleKeydown);
+                        // Ensure window has focus to catch keys
+                        window.focus();
                     });
 
                     onUnmounted(() => {
@@ -286,11 +297,26 @@
 
                     // --- Keyboard/Shutter Logic ---
                     const handleKeydown = (e) => {
+                        // Update debug display so user knows if signal is received
+                        lastKey.value = e.key;
+
                         if (!keyboardMode.value) return;
                         
-                        // Common keys for Bluetooth Shutters
-                        if (e.key === 'VolumeUp' || e.key === 'VolumeDown' || e.key === 'Enter' || e.code === 'Space') {
-                            captureLocation('Shutter Button');
+                        // Expanded list of common keys for Bluetooth Shutters
+                        const validKeys = [
+                            'VolumeUp', 'VolumeDown', 
+                            'AudioVolumeUp', 'AudioVolumeDown', 
+                            'Enter', 'Space', ' ', 
+                            'ArrowUp', 'ArrowDown',
+                            'Camera'
+                        ];
+                        
+                        if (validKeys.includes(e.key) || validKeys.includes(e.code)) {
+                            // Attempt to prevent the default OS volume change (Android often ignores this for security)
+                            if (e.cancelable) {
+                                e.preventDefault();
+                            }
+                            captureLocation(`Button (${e.key})`);
                         }
                     };
 
@@ -345,6 +371,7 @@
                         formatTime,
                         getMapLink,
                         keyboardMode,
+                        lastKey,
                         bleStatus,
                         bleConnected,
                         connectBluetooth
