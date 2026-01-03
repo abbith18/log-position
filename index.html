@@ -57,24 +57,52 @@
                     
                     <div class="row q-col-gutter-md justify-center">
                         
-                        <!-- Activation Card (Essential for Android) -->
+                        <!-- Mode Selection Card -->
                         <div class="col-12 col-md-8">
-                            <q-card class="bg-blue-1 text-center q-pa-sm">
-                                <div class="text-subtitle2 q-mb-sm text-primary">Step 1: Activate Sensor</div>
-                                <div class="text-caption text-grey-8 q-mb-md">
-                                    Click below to start listening. This plays silent audio to keep the app awake and capture media buttons.
-                                </div>
-                                <q-btn 
-                                    :color="isListening ? 'positive' : 'negative'" 
-                                    :icon="isListening ? 'hearing' : 'mic_off'"
-                                    :label="isListening ? 'Sensor Active' : 'Start Sensor / Keep Awake'"
-                                    class="full-width q-mb-sm"
-                                    size="lg"
-                                    @click="toggleListener"
-                                ></q-btn>
-                                <div v-if="isListening" class="text-xs text-green-8 text-weight-bold animated fadeIn">
-                                    • Listening for Keys & Media Commands •
-                                </div>
+                            <q-card class="q-mb-md">
+                                <q-card-section>
+                                    <div class="text-h6">Input Method</div>
+                                    <div class="text-subtitle2 text-grey-7">How is your button connected?</div>
+                                </q-card-section>
+
+                                <q-separator></q-separator>
+
+                                <q-card-section>
+                                    <q-toggle
+                                        v-model="keyboardMode"
+                                        icon="keyboard"
+                                        label="Camera Shutter / Volume Button"
+                                        color="green"
+                                        class="q-mb-sm full-width"
+                                    >
+                                    </q-toggle>
+
+                                    <!-- Debug info to help user see what their button is sending -->
+                                    <div v-if="keyboardMode" class="q-pa-sm bg-grey-2 rounded-borders text-caption text-center">
+                                        Last Signal: <strong>{{ lastKey || 'None' }}</strong>
+                                        <div class="text-grey-6 q-mt-xs" style="font-size: 10px; line-height: 1.2;">
+                                            If phone volume changes but this text doesn't update, Android is blocking the "Volume" signal. <br>
+                                            <strong>Try the "Android" or "Enter" button on your remote.</strong>
+                                        </div>
+                                    </div>
+
+                                    <div v-if="!keyboardMode" class="q-pa-sm bg-grey-3 rounded-borders">
+                                        <div class="row items-center justify-between">
+                                            <div>
+                                                <q-icon name="bluetooth" size="sm"></q-icon>
+                                                <span class="q-ml-sm">BLE Device Status: <strong>{{ bleStatus }}</strong></span>
+                                            </div>
+                                            <q-btn 
+                                                color="primary" 
+                                                icon="bluetooth_searching" 
+                                                label="Connect BLE" 
+                                                @click="connectBluetooth"
+                                                :disable="bleConnected"
+                                                size="sm"
+                                            ></q-btn>
+                                        </div>
+                                    </div>
+                                </q-card-section>
                             </q-card>
                         </div>
 
@@ -86,19 +114,12 @@
                                 size="xl" 
                                 round 
                                 icon="add_location" 
-                                class="q-mb-md shadow-10"
+                                class="q-mb-lg shadow-10"
                                 @click="captureLocation('Manual')"
                             >
+                                <q-tooltip>Manually Save Location</q-tooltip>
                             </q-btn>
-                            <div class="text-caption text-grey-8">Manual Trigger</div>
-                        </div>
-
-                        <!-- Debug Log (To see if keys work) -->
-                        <div class="col-12 col-md-8">
-                            <div class="text-caption">Debug Log:</div>
-                            <div class="debug-console rounded-borders" ref="logContainer">
-                                <div v-for="(log, i) in debugLogs" :key="i">> {{ log }}</div>
-                            </div>
+                            <div class="text-caption text-grey-8">Tap button or press Bluetooth trigger</div>
                         </div>
 
                         <!-- Location List -->
@@ -135,12 +156,6 @@
                     </div>
                 </q-page>
             </q-page-container>
-            
-            <!-- Hidden Audio Element for "Keep Awake" trick -->
-            <audio id="silentAudio" loop>
-                <source src="data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjIwLjEwMAAAAAAAAAAAAAAA//oeAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD//////////////////////////////////////////////////////////////////wAAAAAAMA==" type="audio/mpeg">
-            </audio>
-
         </q-layout>
     </div>
 
@@ -159,15 +174,15 @@
                     
                     // State
                     const locations = ref([]);
-                    const debugLogs = ref(['Ready. Click "Start Sensor" to begin.']);
-                    const isListening = ref(false);
-                    const logContainer = ref(null);
-
-                    // --- Logging Helper ---
-                    const log = (msg) => {
-                        debugLogs.value.unshift(`${new Date().toLocaleTimeString().split(' ')[0]} ${msg}`);
-                        if (debugLogs.value.length > 20) debugLogs.value.pop();
-                    };
+                    const keyboardMode = ref(true); 
+                    const lastKey = ref('');
+                    const gamepadDebounce = ref(false);
+                    
+                    // Bluetooth State
+                    const bleDevice = ref(null);
+                    const bleServer = ref(null);
+                    const bleStatus = ref('Disconnected');
+                    const bleConnected = ref(false);
 
                     // --- Data Logic (LocalStorage) ---
                     const loadLocations = () => {
@@ -178,7 +193,7 @@
                                 locations.value.sort((a, b) => b.timestamp - a.timestamp);
                             }
                         } catch (e) {
-                            log("Error loading data");
+                            console.error("Error loading data");
                         }
                     };
 
@@ -194,10 +209,10 @@
                         locations.value.unshift(data);
                         try {
                             localStorage.setItem('gps_logs', JSON.stringify(locations.value));
-                            $q.notify({ type: 'positive', message: 'Saved!', position: 'top', timeout: 1000 });
-                            log(`Saved: ${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}`);
+                            $q.notify({ type: 'positive', message: 'Location Saved!', position: 'top', timeout: 1000 });
                         } catch (e) {
-                            log("Storage Error");
+                            console.error("Storage Error");
+                            $q.notify({ type: 'negative', message: 'Storage Error' });
                         }
                     };
 
@@ -205,92 +220,132 @@
                         if(!confirm("Delete all history?")) return;
                         localStorage.removeItem('gps_logs');
                         locations.value = [];
-                        log("History cleared");
-                    };
-
-                    // --- Audio / Keep Awake Logic ---
-                    const toggleListener = async () => {
-                        const audio = document.getElementById('silentAudio');
-                        if (!isListening.value) {
-                            try {
-                                await audio.play();
-                                isListening.value = true;
-                                log("Sensor Active (Audio Playing)");
-                                setupMediaSession();
-                            } catch (e) {
-                                log("Error starting audio: " + e.message);
-                                $q.notify({ message: "Tap screen first!", color: "orange" });
-                            }
-                        } else {
-                            audio.pause();
-                            isListening.value = false;
-                            log("Sensor Stopped");
-                        }
-                    };
-
-                    // --- Media Session API (The Secret Sauce) ---
-                    // This allows us to catch "Play/Pause" buttons from headsets/remotes
-                    const setupMediaSession = () => {
-                        if ('mediaSession' in navigator) {
-                            const actionHandler = (details) => {
-                                log(`Media Cmd: ${details.action}`);
-                                captureLocation(`Media: ${details.action}`);
-                            };
-                            
-                            const actions = ['play', 'pause', 'previoustrack', 'nexttrack', 'stop', 'seekbackward', 'seekforward'];
-                            
-                            actions.forEach(action => {
-                                try {
-                                    navigator.mediaSession.setActionHandler(action, () => actionHandler({ action }));
-                                } catch (error) {
-                                    // Ignore unsupported actions
-                                }
-                            });
-                        }
+                        $q.notify({ message: 'History cleared', color: 'grey-8' });
                     };
 
                     // --- GPS Logic ---
                     const captureLocation = (triggerType) => {
-                        log(`Triggering: ${triggerType}`);
                         if (!navigator.geolocation) {
-                            log("No GPS support");
+                            $q.notify({ type: 'negative', message: 'Geolocation not supported' });
                             return;
                         }
                         
+                        // Debounce visual feedback
+                        if (gamepadDebounce.value) return;
+                        gamepadDebounce.value = true;
+                        setTimeout(() => gamepadDebounce.value = false, 1000);
+
+                        $q.loading.show({ message: 'Acquiring GPS...' });
+
                         navigator.geolocation.getCurrentPosition(
-                            (position) => saveLocationLocal(position, triggerType),
+                            (position) => {
+                                $q.loading.hide();
+                                saveLocationLocal(position, triggerType);
+                            },
                             (error) => {
-                                let msg = 'GPS Error';
-                                if (error.code === 1) msg = 'GPS Denied';
-                                if (error.code === 2) msg = 'GPS Unavailable';
-                                if (error.code === 3) msg = 'GPS Timeout';
-                                log(msg);
+                                $q.loading.hide();
+                                let msg = 'Unknown GPS error';
+                                if (error.code === 1) msg = 'Permission denied';
+                                if (error.code === 2) msg = 'Position unavailable';
+                                if (error.code === 3) msg = 'Timeout';
                                 $q.notify({ type: 'negative', message: msg });
                             },
                             { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
                         );
                     };
 
-                    // --- Standard Keyboard Logic ---
-                    const handleKeydown = (e) => {
-                        if (!isListening.value) return; // Only log if active
+                    // --- Gamepad Polling (The "Secret" Backdoor) ---
+                    // Many generic bluetooth remotes also register as gamepads. 
+                    // This often bypasses the OS Volume block.
+                    const pollGamepads = () => {
+                        if (!keyboardMode.value) return; // Only poll if in keyboard/remote mode
+
+                        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
                         
-                        log(`Key: ${e.key} (${e.code})`);
-                        
-                        // Treat ANY key as a trigger if listener is active
-                        // This fixes the "Unknown key" issue.
-                        const ignoredKeys = ['Control', 'Shift', 'Alt', 'Meta'];
-                        if (!ignoredKeys.includes(e.key)) {
-                            // Prevent default volume/scroll behavior
-                            if (e.cancelable) e.preventDefault();
-                            captureLocation(`Key: ${e.key}`);
+                        for (let i = 0; i < gamepads.length; i++) {
+                            const gp = gamepads[i];
+                            if (gp) {
+                                // Check all buttons
+                                for (let j = 0; j < gp.buttons.length; j++) {
+                                    if (gp.buttons[j].pressed) {
+                                        if (!gamepadDebounce.value) {
+                                             lastKey.value = `Gamepad Btn ${j}`;
+                                             captureLocation(`Gamepad Button`);
+                                        }
+                                    }
+                                }
+                            }
                         }
+                        requestAnimationFrame(pollGamepads);
+                    };
+
+                    // --- Keyboard/Shutter Logic ---
+                    const handleKeydown = (e) => {
+                        // Debugging
+                        lastKey.value = e.key;
+
+                        if (!keyboardMode.value) return;
+                        
+                        const validKeys = [
+                            'VolumeUp', 'VolumeDown', 
+                            'AudioVolumeUp', 'AudioVolumeDown', 
+                            'Enter', 'Space', ' ', 
+                            'ArrowUp', 'ArrowDown',
+                            'Camera'
+                        ];
+                        
+                        if (validKeys.includes(e.key) || validKeys.includes(e.code)) {
+                            // Try to prevent Android Volume change (rarely works, but good practice)
+                            if (e.cancelable) e.preventDefault();
+                            
+                            if (!gamepadDebounce.value) {
+                                captureLocation(`Button (${e.key})`);
+                            }
+                        }
+                    };
+
+                    // --- Web Bluetooth Logic ---
+                    const connectBluetooth = async () => {
+                        try {
+                            bleStatus.value = 'Requesting Device...';
+                            
+                            const device = await navigator.bluetooth.requestDevice({
+                                acceptAllDevices: true,
+                                optionalServices: ['battery_service', 'device_information', 'human_interface_device']
+                            });
+
+                            bleDevice.value = device;
+                            device.addEventListener('gattserverdisconnected', onDisconnected);
+
+                            bleStatus.value = 'Connecting...';
+                            const server = await device.gatt.connect();
+                            bleServer.value = server;
+                            bleConnected.value = true;
+                            bleStatus.value = 'Connected';
+
+                            $q.notify({ type: 'positive', message: `Connected to ${device.name}` });
+                            
+                        } catch (error) {
+                            console.error('Bluetooth Error:', error);
+                            bleStatus.value = 'Error: ' + error.message;
+                            $q.notify({ type: 'negative', message: 'Connection Failed' });
+                        }
+                    };
+
+                    const onDisconnected = () => {
+                        bleConnected.value = false;
+                        bleStatus.value = 'Disconnected';
+                        $q.notify({ message: 'Bluetooth Disconnected', color: 'orange' });
                     };
 
                     // --- Lifecycle ---
                     onMounted(() => {
                         loadLocations();
                         window.addEventListener('keydown', handleKeydown);
+                        window.focus();
+                        
+                        // Start the Gamepad Polling Loop
+                        requestAnimationFrame(pollGamepads);
                     });
 
                     onUnmounted(() => {
@@ -302,9 +357,16 @@
                     const getMapLink = (loc) => `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`;
 
                     return {
-                        locations, debugLogs, isListening,
-                        toggleListener, captureLocation, clearHistory,
-                        formatTime, getMapLink
+                        locations,
+                        keyboardMode,
+                        lastKey,
+                        captureLocation,
+                        clearHistory,
+                        formatTime,
+                        getMapLink,
+                        bleStatus,
+                        bleConnected,
+                        connectBluetooth
                     };
                 }
             });
