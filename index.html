@@ -1,379 +1,328 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Quasar GPS Logger</title>
-    
-    <!-- PWA / Mobile App Settings -->
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#1976D2">
-    
-    <!-- Manifest -->
-    <link rel="manifest" href='data:application/manifest+json,{
-        "name": "GPS Logger",
-        "short_name": "GPS Log",
-        "start_url": ".",
-        "display": "standalone",
-        "background_color": "#ffffff",
-        "theme_color": "#1976D2",
-        "icons": [{
-            "src": "https://cdn.quasar.dev/logo-v2/svg/logo.svg",
-            "sizes": "any",
-            "type": "image/svg+xml"
-        }]
-    }'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>GPS Logger</title>
 
-    <!-- Fonts and Icons -->
-    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900|Material+Icons" rel="stylesheet" type="text/css">
-    
-    <!-- Quasar CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/quasar@2.14.2/dist/quasar.prod.css" rel="stylesheet" type="text/css">
-    
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#1976D2" />
+
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/quasar@2/dist/quasar.prod.css" rel="stylesheet" />
+
     <style>
-        body { overscroll-behavior-y: contain; }
-        .location-card { transition: all 0.3s ease; }
-        .location-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        .debug-console { font-family: monospace; font-size: 10px; max-height: 100px; overflow-y: auto; background: #000; color: #0f0; padding: 5px; }
+      body {
+        overscroll-behavior: contain;
+        user-select: none;
+      }
+      .debug-console {
+        font-family: monospace;
+        font-size: 11px;
+        height: 150px;
+        overflow-y: auto;
+        background: #111;
+        color: #0f0;
+        padding: 8px;
+        border-radius: 4px;
+        border: 1px solid #333;
+      }
+      .flash {
+        animation: flash 0.2s ease-out;
+      }
+      @keyframes flash {
+        0% {
+          background: rgba(0, 255, 0, 0.3);
+        }
+        100% {
+          background: transparent;
+        }
+      }
     </style>
-</head>
-<body>
-    <div id="q-app">
-        <q-layout view="lHh Lpr lFf" class="bg-grey-2">
-            <q-header elevated class="bg-primary text-white">
-                <q-toolbar>
-                    <q-icon name="my_location" size="md" class="q-mr-sm"></q-icon>
-                    <q-toolbar-title>GPS Logger</q-toolbar-title>
-                    <q-btn flat round dense icon="delete_sweep" @click="clearHistory" v-if="locations.length > 0">
-                        <q-tooltip>Clear History</q-tooltip>
-                    </q-btn>
-                </q-toolbar>
-            </q-header>
+  </head>
 
-            <q-page-container>
-                <q-page class="q-pa-md">
-                    
-                    <div class="row q-col-gutter-md justify-center">
-                        
-                        <!-- Mode Selection Card -->
-                        <div class="col-12 col-md-8">
-                            <q-card class="q-mb-md">
-                                <q-card-section>
-                                    <div class="text-h6">Input Method</div>
-                                    <div class="text-subtitle2 text-grey-7">How is your button connected?</div>
-                                </q-card-section>
+  <body>
+    <div id="q-app" :class="{ flash: isFlashing }">
+      <q-layout view="lHh Lpr lFf">
+        <q-header elevated class="bg-primary text-white">
+          <q-toolbar>
+            <q-icon name="my_location" class="q-mr-sm" />
+            <q-toolbar-title>GPS Logger</q-toolbar-title>
+            <q-btn flat dense round icon="delete" @click="clearHistory" />
+          </q-toolbar>
+        </q-header>
 
-                                <q-separator></q-separator>
+        <q-page-container>
+          <q-page class="q-pa-md">
+            <!-- BLE Connection Card -->
+            <q-card class="q-mb-md">
+              <q-card-section>
+                <div class="text-h6 q-mb-sm">
+                  <q-icon name="bluetooth" />
+                  ESP32 Connection
+                </div>
+                
+                <q-btn 
+                  v-if="!bleConnected"
+                  color="primary" 
+                  icon="bluetooth_searching"
+                  label="Connect to ESP32"
+                  @click="connectBLE"
+                  :loading="bleConnecting"
+                  :disable="!bluetoothAvailable"
+                />
+                
+                <div v-else class="text-positive">
+                  <q-icon name="check_circle" />
+                  Connected to {{ bleDeviceName }}
+                  <q-btn 
+                    flat 
+                    dense 
+                    size="sm" 
+                    color="negative" 
+                    label="Disconnect"
+                    @click="disconnectBLE"
+                    class="q-ml-sm"
+                  />
+                </div>
 
-                                <q-card-section>
-                                    <q-toggle
-                                        v-model="keyboardMode"
-                                        icon="keyboard"
-                                        label="Camera Shutter / Volume Button"
-                                        color="green"
-                                        class="q-mb-sm full-width"
-                                    >
-                                    </q-toggle>
+                <div v-if="!bluetoothAvailable" class="text-warning q-mt-sm text-caption">
+                  ⚠️ Web Bluetooth not available. Open in Chrome/Edge on your phone.
+                </div>
+              </q-card-section>
+            </q-card>
 
-                                    <!-- Debug info to help user see what their button is sending -->
-                                    <div v-if="keyboardMode" class="q-pa-sm bg-grey-2 rounded-borders text-caption text-center">
-                                        Last Signal: <strong>{{ lastKey || 'None' }}</strong>
-                                        <div class="text-grey-6 q-mt-xs" style="font-size: 10px; line-height: 1.2;">
-                                            If phone volume changes but this text doesn't update, Android is blocking the "Volume" signal. <br>
-                                            <strong>Try the "Android" or "Enter" button on your remote.</strong>
-                                        </div>
-                                    </div>
+            <div class="debug-console q-mb-md">
+              <div v-for="(l,i) in logs" :key="i">> {{ l }}</div>
+            </div>
 
-                                    <div v-if="!keyboardMode" class="q-pa-sm bg-grey-3 rounded-borders">
-                                        <div class="row items-center justify-between">
-                                            <div>
-                                                <q-icon name="bluetooth" size="sm"></q-icon>
-                                                <span class="q-ml-sm">BLE Device Status: <strong>{{ bleStatus }}</strong></span>
-                                            </div>
-                                            <q-btn 
-                                                color="primary" 
-                                                icon="bluetooth_searching" 
-                                                label="Connect BLE" 
-                                                @click="connectBluetooth"
-                                                :disable="bleConnected"
-                                                size="sm"
-                                            ></q-btn>
-                                        </div>
-                                    </div>
-                                </q-card-section>
-                            </q-card>
-                        </div>
+            <div class="text-center q-mb-md">
+              <q-btn round size="xl" color="secondary" icon="add_location" @click="captureLocation('Manual Tap')" />
+              <div class="text-caption q-mt-sm">Tap to capture location</div>
+            </div>
 
-                        <!-- Manual Trigger -->
-                        <div class="col-12 col-md-8 text-center">
-                            <q-btn 
-                                push 
-                                color="secondary" 
-                                size="xl" 
-                                round 
-                                icon="add_location" 
-                                class="q-mb-lg shadow-10"
-                                @click="captureLocation('Manual')"
-                            >
-                                <q-tooltip>Manually Save Location</q-tooltip>
-                            </q-btn>
-                            <div class="text-caption text-grey-8">Tap button or press Bluetooth trigger</div>
-                        </div>
-
-                        <!-- Location List -->
-                        <div class="col-12 col-md-8">
-                            <div class="text-h6 q-mb-sm">Saved Locations ({{ locations.length }})</div>
-                            
-                            <div v-if="locations.length === 0" class="text-center q-pa-lg text-grey">
-                                <q-icon name="explore_off" size="xl" class="q-mb-sm"></q-icon>
-                                <div>No locations saved yet.</div>
-                            </div>
-
-                            <q-list separator bordered class="bg-white rounded-borders shadow-1">
-                                <q-item v-for="loc in locations" :key="loc.id" class="location-card">
-                                    <q-item-section avatar>
-                                        <q-avatar color="primary" text-color="white" icon="place"></q-avatar>
-                                    </q-item-section>
-                                    
-                                    <q-item-section>
-                                        <q-item-label class="text-weight-bold">
-                                            {{ loc.lat.toFixed(6) }}, {{ loc.lng.toFixed(6) }}
-                                        </q-item-label>
-                                        <q-item-label caption lines="1">
-                                            Accuracy: +/- {{ Math.round(loc.accuracy) }}m • {{ loc.triggerType }}
-                                        </q-item-label>
-                                    </q-item-section>
-
-                                    <q-item-section side>
-                                        <div class="text-caption">{{ formatTime(loc.timestamp) }}</div>
-                                        <q-btn flat round color="primary" icon="map" :href="getMapLink(loc)" target="_blank" dense></q-btn>
-                                    </q-item-section>
-                                </q-item>
-                            </q-list>
-                        </div>
-                    </div>
-                </q-page>
-            </q-page-container>
-        </q-layout>
+            <q-list bordered separator v-if="locations.length > 0">
+              <q-item v-for="loc in locations" :key="loc.id">
+                <q-item-section>
+                  <q-item-label>{{ loc.lat.toFixed(5) }}, {{ loc.lng.toFixed(5) }}</q-item-label>
+                  <q-item-label caption> {{ loc.trigger }} • {{ new Date(loc.time).toLocaleTimeString() }} </q-item-label>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-page>
+        </q-page-container>
+      </q-layout>
     </div>
 
-    <!-- Vue and Quasar JS -->
     <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/quasar@2.14.2/dist/quasar.umd.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/quasar@2/dist/quasar.umd.prod.js"></script>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const { createApp, ref, onMounted, onUnmounted } = Vue;
-            const { useQuasar } = Quasar;
+      const { createApp, ref, onMounted } = Vue;
 
-            const app = createApp({
-                setup() {
-                    const $q = useQuasar();
-                    
-                    // State
-                    const locations = ref([]);
-                    const keyboardMode = ref(true); 
-                    const lastKey = ref('');
-                    const gamepadDebounce = ref(false);
-                    
-                    // Bluetooth State
-                    const bleDevice = ref(null);
-                    const bleServer = ref(null);
-                    const bleStatus = ref('Disconnected');
-                    const bleConnected = ref(false);
+      createApp({
+        setup() {
+          const locations = ref([]);
+          const logs = ref([]);
+          const isFlashing = ref(false);
+          const bleConnected = ref(false);
+          const bleConnecting = ref(false);
+          const bleDeviceName = ref('');
+          const bluetoothAvailable = ref(false);
+          
+          let bleDevice = null;
+          let bleCharacteristic = null;
 
-                    // --- Data Logic (LocalStorage) ---
-                    const loadLocations = () => {
-                        try {
-                            const stored = localStorage.getItem('gps_logs');
-                            if (stored) {
-                                locations.value = JSON.parse(stored);
-                                locations.value.sort((a, b) => b.timestamp - a.timestamp);
-                            }
-                        } catch (e) {
-                            console.error("Error loading data");
-                        }
-                    };
+          const log = (m) => {
+            const time = new Date().toLocaleTimeString();
+            logs.value.unshift(`${time} ${m}`);
+            if (logs.value.length > 50) logs.value.pop();
+            console.log(m);
+          };
 
-                    const saveLocationLocal = (position, type) => {
-                        const data = {
-                            id: Date.now().toString() + Math.random().toString().slice(2, 6),
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude,
-                            accuracy: position.coords.accuracy,
-                            timestamp: Date.now(),
-                            triggerType: type
-                        };
-                        locations.value.unshift(data);
-                        try {
-                            localStorage.setItem('gps_logs', JSON.stringify(locations.value));
-                            $q.notify({ type: 'positive', message: 'Location Saved!', position: 'top', timeout: 1000 });
-                        } catch (e) {
-                            console.error("Storage Error");
-                            $q.notify({ type: 'negative', message: 'Storage Error' });
-                        }
-                    };
+          const flash = () => {
+            isFlashing.value = true;
+            setTimeout(() => (isFlashing.value = false), 200);
+          };
 
-                    const clearHistory = () => {
-                        if(!confirm("Delete all history?")) return;
-                        localStorage.removeItem('gps_logs');
-                        locations.value = [];
-                        $q.notify({ message: 'History cleared', color: 'grey-8' });
-                    };
+          const captureLocation = (trigger) => {
+            log("TRIGGER: " + trigger);
+            flash();
 
-                    // --- GPS Logic ---
-                    const captureLocation = (triggerType) => {
-                        if (!navigator.geolocation) {
-                            $q.notify({ type: 'negative', message: 'Geolocation not supported' });
-                            return;
-                        }
-                        
-                        // Debounce visual feedback
-                        if (gamepadDebounce.value) return;
-                        gamepadDebounce.value = true;
-                        setTimeout(() => gamepadDebounce.value = false, 1000);
+            if (!navigator.geolocation) {
+              log("❌ Geolocation not available");
+              return;
+            }
 
-                        $q.loading.show({ message: 'Acquiring GPS...' });
-
-                        navigator.geolocation.getCurrentPosition(
-                            (position) => {
-                                $q.loading.hide();
-                                saveLocationLocal(position, triggerType);
-                            },
-                            (error) => {
-                                $q.loading.hide();
-                                let msg = 'Unknown GPS error';
-                                if (error.code === 1) msg = 'Permission denied';
-                                if (error.code === 2) msg = 'Position unavailable';
-                                if (error.code === 3) msg = 'Timeout';
-                                $q.notify({ type: 'negative', message: msg });
-                            },
-                            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-                        );
-                    };
-
-                    // --- Gamepad Polling (The "Secret" Backdoor) ---
-                    // Many generic bluetooth remotes also register as gamepads. 
-                    // This often bypasses the OS Volume block.
-                    const pollGamepads = () => {
-                        if (!keyboardMode.value) return; // Only poll if in keyboard/remote mode
-
-                        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-                        
-                        for (let i = 0; i < gamepads.length; i++) {
-                            const gp = gamepads[i];
-                            if (gp) {
-                                // Check all buttons
-                                for (let j = 0; j < gp.buttons.length; j++) {
-                                    if (gp.buttons[j].pressed) {
-                                        if (!gamepadDebounce.value) {
-                                             lastKey.value = `Gamepad Btn ${j}`;
-                                             captureLocation(`Gamepad Button`);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        requestAnimationFrame(pollGamepads);
-                    };
-
-                    // --- Keyboard/Shutter Logic ---
-                    const handleKeydown = (e) => {
-                        // Debugging
-                        lastKey.value = e.key;
-
-                        if (!keyboardMode.value) return;
-                        
-                        const validKeys = [
-                            'VolumeUp', 'VolumeDown', 
-                            'AudioVolumeUp', 'AudioVolumeDown', 
-                            'Enter', 'Space', ' ', 
-                            'ArrowUp', 'ArrowDown',
-                            'Camera'
-                        ];
-                        
-                        if (validKeys.includes(e.key) || validKeys.includes(e.code)) {
-                            // Try to prevent Android Volume change (rarely works, but good practice)
-                            if (e.cancelable) e.preventDefault();
-                            
-                            if (!gamepadDebounce.value) {
-                                captureLocation(`Button (${e.key})`);
-                            }
-                        }
-                    };
-
-                    // --- Web Bluetooth Logic ---
-                    const connectBluetooth = async () => {
-                        try {
-                            bleStatus.value = 'Requesting Device...';
-                            
-                            const device = await navigator.bluetooth.requestDevice({
-                                acceptAllDevices: true,
-                                optionalServices: ['battery_service', 'device_information', 'human_interface_device']
-                            });
-
-                            bleDevice.value = device;
-                            device.addEventListener('gattserverdisconnected', onDisconnected);
-
-                            bleStatus.value = 'Connecting...';
-                            const server = await device.gatt.connect();
-                            bleServer.value = server;
-                            bleConnected.value = true;
-                            bleStatus.value = 'Connected';
-
-                            $q.notify({ type: 'positive', message: `Connected to ${device.name}` });
-                            
-                        } catch (error) {
-                            console.error('Bluetooth Error:', error);
-                            bleStatus.value = 'Error: ' + error.message;
-                            $q.notify({ type: 'negative', message: 'Connection Failed' });
-                        }
-                    };
-
-                    const onDisconnected = () => {
-                        bleConnected.value = false;
-                        bleStatus.value = 'Disconnected';
-                        $q.notify({ message: 'Bluetooth Disconnected', color: 'orange' });
-                    };
-
-                    // --- Lifecycle ---
-                    onMounted(() => {
-                        loadLocations();
-                        window.addEventListener('keydown', handleKeydown);
-                        window.focus();
-                        
-                        // Start the Gamepad Polling Loop
-                        requestAnimationFrame(pollGamepads);
-                    });
-
-                    onUnmounted(() => {
-                        window.removeEventListener('keydown', handleKeydown);
-                    });
-
-                    // --- Helpers ---
-                    const formatTime = (ts) => new Date(ts).toLocaleString();
-                    const getMapLink = (loc) => `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`;
-
-                    return {
-                        locations,
-                        keyboardMode,
-                        lastKey,
-                        captureLocation,
-                        clearHistory,
-                        formatTime,
-                        getMapLink,
-                        bleStatus,
-                        bleConnected,
-                        connectBluetooth
-                    };
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                const d = {
+                  id: Date.now(),
+                  lat: pos.coords.latitude,
+                  lng: pos.coords.longitude,
+                  time: Date.now(),
+                  trigger,
+                };
+                locations.value.unshift(d);
+                try {
+                  localStorage.setItem("gps_logs", JSON.stringify(locations.value));
+                  log("✓ Location saved");
+                } catch (e) {
+                  log("⚠️ Storage error: " + e.message);
                 }
-            });
+              },
+              (e) => log("❌ GPS error: " + e.message),
+              { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+          };
 
-            app.use(Quasar);
-            app.mount('#q-app');
-        });
+          const connectBLE = async () => {
+            if (!bluetoothAvailable.value) {
+              log("❌ Web Bluetooth not supported");
+              return;
+            }
+
+            bleConnecting.value = true;
+            log("Scanning for BLE devices...");
+
+            try {
+              bleDevice = await navigator.bluetooth.requestDevice({
+                filters: [
+                  { name: 'GPS Shutterer' }
+                ],
+                optionalServices: [
+                  '00001812-0000-1000-8000-00805f9b34fb', // HID Service
+                  '0000180f-0000-1000-8000-00805f9b34fb', // Battery Service
+                  '0000180a-0000-1000-8000-00805f9b34fb'  // Device Info
+                ]
+              });
+
+              bleDeviceName.value = bleDevice.name || 'ESP32';
+              log(`✓ Found: ${bleDeviceName.value}`);
+
+              bleDevice.addEventListener('gattserverdisconnected', () => {
+                log("❌ BLE disconnected");
+                bleConnected.value = false;
+                bleCharacteristic = null;
+              });
+
+              log("Connecting to GATT server...");
+              const server = await bleDevice.gatt.connect();
+              log("✓ GATT connected");
+              
+              log("Getting HID service...");
+              const hidService = await server.getPrimaryService('00001812-0000-1000-8000-00805f9b34fb');
+              log("✓ HID service found");
+              
+              log("Getting Report characteristic...");
+              bleCharacteristic = await hidService.getCharacteristic('00002a4d-0000-1000-8000-00805f9b34fb');
+              log("✓ Report characteristic found");
+              
+              log("Starting notifications...");
+              await bleCharacteristic.startNotifications();
+              log("✓ Notifications started");
+              
+              bleCharacteristic.addEventListener('characteristicvaluechanged', handleBLEData);
+
+              bleConnected.value = true;
+              log("✅ Connected! Press ESP32 button");
+
+            } catch (error) {
+              log(`❌ Error: ${error.message || error}`);
+              console.error('BLE Error:', error);
+              
+              if (error.message && error.message.includes('User cancelled')) {
+                log("Connection cancelled by user");
+              }
+            } finally {
+              bleConnecting.value = false;
+            }
+          };
+
+          const handleBLEData = (event) => {
+            try {
+              const value = event.target.value;
+              const data = new Uint8Array(value.buffer);
+              
+              log(`Data: [${Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' ')}]`);
+              
+              // Check for Enter key (0x28 in keyboard reports)
+              if (data.length >= 3 && data[2] === 0x28) {
+                log("🔘 ESP32 BUTTON PRESSED!");
+                captureLocation("ESP32 Button");
+              } else if (data.length >= 3 && data[2] !== 0) {
+                log(`Key code: 0x${data[2].toString(16)}`);
+              }
+            } catch (error) {
+              log(`❌ Data error: ${error.message}`);
+            }
+          };
+
+          const disconnectBLE = () => {
+            try {
+              if (bleCharacteristic) {
+                bleCharacteristic.removeEventListener('characteristicvaluechanged', handleBLEData);
+              }
+              if (bleDevice && bleDevice.gatt.connected) {
+                bleDevice.gatt.disconnect();
+                log("Disconnected from ESP32");
+              }
+            } catch (error) {
+              log(`Disconnect error: ${error.message}`);
+            }
+            bleConnected.value = false;
+            bleCharacteristic = null;
+            bleDevice = null;
+          };
+
+          onMounted(() => {
+            bluetoothAvailable.value = !!navigator.bluetooth;
+
+            try {
+              const saved = localStorage.getItem("gps_logs");
+              if (saved) {
+                locations.value = JSON.parse(saved);
+              }
+            } catch (e) {
+              log("⚠️ Could not load saved locations");
+            }
+
+            if (bluetoothAvailable.value) {
+              log("✓ Web Bluetooth available");
+              log("Click 'Connect to ESP32' button");
+            } else {
+              log("❌ Web Bluetooth not available");
+              log("Please use Chrome or Edge browser");
+            }
+          });
+
+          return {
+            locations,
+            logs,
+            isFlashing,
+            bleConnected,
+            bleConnecting,
+            bleDeviceName,
+            bluetoothAvailable,
+            captureLocation,
+            connectBLE,
+            disconnectBLE,
+            clearHistory() {
+              locations.value = [];
+              try {
+                localStorage.removeItem("gps_logs");
+                log("History cleared");
+              } catch (e) {
+                log("Clear error: " + e.message);
+              }
+            },
+          };
+        },
+      })
+        .use(Quasar)
+        .mount("#q-app");
     </script>
-</body>
+  </body>
 </html>
