@@ -17,7 +17,7 @@
       .debug-console {
         font-family: monospace;
         font-size: 11px;
-        height: 180px;
+        height: 200px;
         overflow-y: auto;
         background: #111;
         color: #0f0;
@@ -29,7 +29,7 @@
         animation: flash 0.2s ease-out;
       }
       @keyframes flash {
-        0% { background: rgba(0, 255, 0, 0.3); }
+        0% { background: rgba(76, 175, 80, 0.3); }
         100% { background: transparent; }
       }
     </style>
@@ -44,6 +44,10 @@
     <script>
       const { createApp, ref, onMounted, h } = Vue;
 
+      // Custom service UUID (matches ESP32)
+      const CUSTOM_SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
+      const BUTTON_CHAR_UUID = '12345678-1234-5678-1234-56789abcdef1';
+
       const App = {
         setup() {
           const locations = ref([]);
@@ -55,12 +59,12 @@
           const bluetoothAvailable = ref(false);
           
           let bleDevice = null;
-          let bleCharacteristics = [];
+          let bleCharacteristic = null;
 
           const log = (m) => {
             const time = new Date().toLocaleTimeString();
             logs.value.unshift(`${time} ${m}`);
-            if (logs.value.length > 80) logs.value.pop();
+            if (logs.value.length > 100) logs.value.pop();
             console.log(m);
           };
 
@@ -70,7 +74,7 @@
           };
 
           const captureLocation = (trigger) => {
-            log("TRIGGER: " + trigger);
+            log("🎯 TRIGGER: " + trigger);
             flash();
 
             if (!navigator.geolocation) {
@@ -90,7 +94,7 @@
                 locations.value.unshift(d);
                 try {
                   localStorage.setItem("gps_logs", JSON.stringify(locations.value));
-                  log("✓ Location saved");
+                  log("✓ Location saved: " + d.lat.toFixed(5) + ", " + d.lng.toFixed(5));
                 } catch (e) {
                   log("⚠️ Storage error");
                 }
@@ -107,12 +111,12 @@
             }
 
             bleConnecting.value = true;
-            log("Scanning for BLE devices...");
+            log("🔍 Scanning for devices...");
 
             try {
               bleDevice = await navigator.bluetooth.requestDevice({
                 filters: [{ name: 'GPS Shutterer' }],
-                optionalServices: ['00001812-0000-1000-8000-00805f9b34fb']
+                optionalServices: [CUSTOM_SERVICE_UUID]
               });
 
               bleDeviceName.value = bleDevice.name || 'ESP32';
@@ -121,40 +125,41 @@
               bleDevice.addEventListener('gattserverdisconnected', () => {
                 log("❌ Disconnected");
                 bleConnected.value = false;
-                bleCharacteristics = [];
+                bleCharacteristic = null;
               });
 
-              log("Connecting...");
+              log("🔗 Connecting to GATT...");
               const server = await bleDevice.gatt.connect();
               log("✓ GATT connected");
               
-              log("Getting HID service...");
-              const hidService = await server.getPrimaryService('00001812-0000-1000-8000-00805f9b34fb');
-              log("✓ HID service found");
+              log("🔧 Getting service...");
+              const service = await server.getPrimaryService(CUSTOM_SERVICE_UUID);
+              log("✓ Service found");
               
-              log("Getting characteristics...");
-              const characteristics = await hidService.getCharacteristics();
-              log(`✓ Found ${characteristics.length} characteristics`);
+              log("🔧 Getting characteristic...");
+              bleCharacteristic = await service.getCharacteristic(BUTTON_CHAR_UUID);
+              log("✓ Characteristic found");
               
-              for (const char of characteristics) {
-                log(`  UUID: ${char.uuid}`);
+              log("🔔 Starting notifications...");
+              await bleCharacteristic.startNotifications();
+              log("✓ Notifications enabled");
+              
+              bleCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+                const value = event.target.value;
+                const data = new Uint8Array(value.buffer);
                 
-                if (char.properties.notify) {
-                  try {
-                    await char.startNotifications();
-                    char.addEventListener('characteristicvaluechanged', (event) => {
-                      handleBLEData(event, char.uuid);
-                    });
-                    bleCharacteristics.push(char);
-                    log(`  ✓ Subscribed`);
-                  } catch (e) {
-                    log(`  ⚠️ Subscribe failed`);
-                  }
+                const hex = Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                log(`📡 Data: [${hex}]`);
+                
+                // 0x01 = button pressed
+                if (data.length > 0 && data[0] === 0x01) {
+                  log("🔘 ESP32 BUTTON PRESSED!");
+                  captureLocation("ESP32 Button");
                 }
-              }
+              });
 
               bleConnected.value = true;
-              log("✅ Ready! Press ESP32 button");
+              log("✅ Connected! Press ESP32 button");
 
             } catch (error) {
               log(`❌ Error: ${error.message || error}`);
@@ -164,47 +169,26 @@
             }
           };
 
-          const handleBLEData = (event, uuid) => {
-            try {
-              const value = event.target.value;
-              const data = new Uint8Array(value.buffer);
-              
-              const hex = Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' ');
-              log(`[${uuid.substring(4, 8)}]: ${hex}`);
-              
-              // Volume Up (Report ID 2, bit 0)
-              if (data.length >= 2 && data[0] === 0x02 && data[1] === 0x01) {
-                log("🔊 VOLUME UP!");
-                captureLocation("ESP32 Button");
-              }
-              // Enter key (Report ID 1, 0x28)
-              else if (data.length >= 3 && data[0] === 0x01 && data[2] === 0x28) {
-                log("⌨️ ENTER KEY!");
-                captureLocation("ESP32 Button");
-              }
-            } catch (error) {
-              log(`❌ Parse error`);
-            }
-          };
-
           const disconnectBLE = () => {
             try {
               if (bleDevice && bleDevice.gatt.connected) {
                 bleDevice.gatt.disconnect();
-                log("Disconnected");
+                log("🔌 Disconnected");
               }
             } catch (error) {
-              log(`Disconnect error`);
+              log(`Error: ${error.message}`);
             }
             bleConnected.value = false;
-            bleCharacteristics = [];
+            bleCharacteristic = null;
             bleDevice = null;
           };
 
           const clearHistory = () => {
-            locations.value = [];
-            localStorage.removeItem("gps_logs");
-            log("History cleared");
+            if (confirm("Clear all locations?")) {
+              locations.value = [];
+              localStorage.removeItem("gps_logs");
+              log("🗑️ History cleared");
+            }
           };
 
           onMounted(() => {
@@ -218,11 +202,11 @@
             }
 
             if (bluetoothAvailable.value) {
-              log("✓ Web Bluetooth available");
-              log("Click 'Connect to ESP32'");
+              log("✅ Web Bluetooth available");
+              log("👆 Click 'Connect to ESP32' to start");
             } else {
               log("❌ Web Bluetooth unavailable");
-              log("Use Chrome or Edge");
+              log("📱 Use Chrome or Edge browser");
             }
           });
 
