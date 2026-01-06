@@ -120,49 +120,49 @@
               });
 
               bleDeviceName.value = bleDevice.name || 'ESP32';
-              log(`✓ Found: ${bleDeviceName.value}`);
+              log(`✓ Nalezen: ${bleDeviceName.value}`);
 
               bleDevice.addEventListener('gattserverdisconnected', () => {
-                log("❌ Disconnected");
+                log("Odpojeno!");
                 bleConnected.value = false;
                 bleCharacteristic = null;
               });
 
-              log("🔗 Connecting to GATT...");
+              log("Připojování GATT...");
               const server = await bleDevice.gatt.connect();
-              log("✓ GATT connected");
+              log("✓ GATT připojeno!");
               
-              log("🔧 Getting service...");
+              log("Získávání service...");
               const service = await server.getPrimaryService(CUSTOM_SERVICE_UUID);
-              log("✓ Service found");
+              log("✓ Service nalezen!");
               
-              log("🔧 Getting characteristic...");
+              log("Získávání charakteristiky...");
               bleCharacteristic = await service.getCharacteristic(BUTTON_CHAR_UUID);
-              log("✓ Characteristic found");
+              log("✓ Characteristika nalezena!");
               
-              log("🔔 Starting notifications...");
+              log("Zapínaní oznámení...");
               await bleCharacteristic.startNotifications();
-              log("✓ Notifications enabled");
+              log("✓ Oznámení zapnuty");
               
               bleCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
                 const value = event.target.value;
                 const data = new Uint8Array(value.buffer);
                 
                 const hex = Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                log(`📡 Data: [${hex}]`);
+                log(`Data: [${hex}]`);
                 
                 // 0x01 = button pressed
                 if (data.length > 0 && data[0] === 0x01) {
-                  log("🔘 ESP32 BUTTON PRESSED!");
-                  captureLocation("ESP32 Button");
+                  log("Tlačítko stisknuto!");
+                  captureLocation("Dálkové tlačítko");
                 }
               });
 
               bleConnected.value = true;
-              log("✅ Connected! Press ESP32 button");
+              log("Připojeno! Nyní lze použít tlačítko");
 
             } catch (error) {
-              log(`❌ Error: ${error.message || error}`);
+              log(`Chyba: ${error.message || error}`);
               console.error('BLE Error:', error);
             } finally {
               bleConnecting.value = false;
@@ -173,7 +173,7 @@
             try {
               if (bleDevice && bleDevice.gatt.connected) {
                 bleDevice.gatt.disconnect();
-                log("🔌 Disconnected");
+                log("Odpojeno");
               }
             } catch (error) {
               log(`Error: ${error.message}`);
@@ -184,10 +184,10 @@
           };
 
           const clearHistory = () => {
-            if (confirm("Clear all locations?")) {
+            if (confirm("Smazat všechny lokace?")) {
               locations.value = [];
               localStorage.removeItem("gps_logs");
-              log("🗑️ History cleared");
+              log("Historie záznamů smazána!");
             }
           };
 
@@ -198,15 +198,15 @@
               const saved = localStorage.getItem("gps_logs");
               if (saved) locations.value = JSON.parse(saved);
             } catch (e) {
-              log("⚠️ Load error");
+              log("Chyba při načítání");
             }
 
             if (bluetoothAvailable.value) {
-              log("✅ Web Bluetooth available");
-              log("👆 Click 'Connect to ESP32' to start");
+              log("Webové rozhrání Bluetooth aktivní");
+              log("Zmáčknetě 'Připojit se k ESP32' pro start");
             } else {
-              log("❌ Web Bluetooth unavailable");
-              log("📱 Use Chrome or Edge browser");
+              log("Rozhrání Web Bluetooth nenalezeno");
+              log("Použijte vyhledáváč Chrome či Edge");
             }
           });
 
@@ -232,7 +232,7 @@
                 default: () => h(Quasar.QToolbar, {}, {
                   default: () => [
                     h(Quasar.QIcon, { name: 'my_location', class: 'q-mr-sm' }),
-                    h(Quasar.QToolbarTitle, {}, { default: () => 'GPS Logger' }),
+                    h(Quasar.QToolbarTitle, {}, { default: () => 'Ukládání GPS lokace' }),
                     h(Quasar.QBtn, { flat: true, dense: true, round: true, icon: 'delete', onClick: this.clearHistory })
                   ]
                 })
@@ -245,13 +245,13 @@
                         default: () => [
                           h('div', { class: 'text-h6 q-mb-sm' }, [
                             h(Quasar.QIcon, { name: 'bluetooth' }),
-                            ' ESP32 Connection'
+                            ' Připojení k ESP32'
                           ]),
                           !this.bleConnected ? 
                             h(Quasar.QBtn, {
                               color: 'primary',
                               icon: 'bluetooth_searching',
-                              label: 'Connect to ESP32',
+                              label: 'Připojit se k ESP32',
                               onClick: this.connectBLE,
                               loading: this.bleConnecting,
                               disable: !this.bluetoothAvailable
@@ -264,14 +264,14 @@
                                 dense: true,
                                 size: 'sm',
                                 color: 'negative',
-                                label: 'Disconnect',
+                                label: 'Odpojit',
                                 onClick: this.disconnectBLE,
                                 class: 'q-ml-sm'
                               })
                             ]),
                           !this.bluetoothAvailable ? 
                             h('div', { class: 'text-warning q-mt-sm text-caption' }, 
-                              '⚠️ Web Bluetooth not available. Use Chrome or Edge.'
+                              'Rozhrání Web Bluetooth nenalezeno. Použijte Chrome či Edge.'
                             ) : null
                         ]
                       })
@@ -285,9 +285,9 @@
                         size: 'xl',
                         color: 'secondary',
                         icon: 'add_location',
-                        onClick: () => this.captureLocation('Manual Tap')
+                        onClick: () => this.captureLocation('Manuální stisk')
                       }),
-                      h('div', { class: 'text-caption q-mt-sm' }, 'Tap to capture location')
+                      h('div', { class: 'text-caption q-mt-sm' }, 'Stistkněte pro manuální uložení')
                     ]),
                     this.locations.length > 0 ? 
                       h(Quasar.QList, { bordered: true, separator: true },
@@ -318,3 +318,4 @@
     </script>
   </body>
 </html>
+
