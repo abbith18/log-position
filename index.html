@@ -166,12 +166,7 @@
                   trigger,
                 };
                 locations.value.unshift(d);
-                try {
-                  localStorage.setItem("gps_logs", JSON.stringify(locations.value));
-                  log("✓ Location saved");
-                } catch (e) {
-                  log("⚠️ Storage error: " + e.message);
-                }
+                log("✓ Location saved");
               },
               (e) => log("❌ GPS error: " + e.message),
               { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -280,15 +275,6 @@
           onMounted(() => {
             bluetoothAvailable.value = !!navigator.bluetooth;
 
-            try {
-              const saved = localStorage.getItem("gps_logs");
-              if (saved) {
-                locations.value = JSON.parse(saved);
-              }
-            } catch (e) {
-              log("⚠️ Could not load saved locations");
-            }
-
             if (bluetoothAvailable.value) {
               log("✓ Web Bluetooth available");
               log("Click 'Connect to ESP32' button");
@@ -311,12 +297,7 @@
             disconnectBLE,
             clearHistory() {
               locations.value = [];
-              try {
-                localStorage.removeItem("gps_logs");
-                log("History cleared");
-              } catch (e) {
-                log("Clear error: " + e.message);
-              }
+              log("History cleared");
             },
           };
         },
