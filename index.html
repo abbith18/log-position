@@ -208,6 +208,22 @@
               const server = await bleDevice.gatt.connect();
               log("✓ GATT connected");
               
+              log("Discovering all services...");
+              const services = await server.getPrimaryServices();
+              log(`✓ Found ${services.length} services:`);
+              
+              for (const service of services) {
+                log(`  Service: ${service.uuid}`);
+                try {
+                  const characteristics = await service.getCharacteristics();
+                  for (const char of characteristics) {
+                    log(`    Char: ${char.uuid} (${char.properties.read ? 'R' : ''}${char.properties.write ? 'W' : ''}${char.properties.notify ? 'N' : ''})`);
+                  }
+                } catch (e) {
+                  log(`    Error reading characteristics: ${e.message}`);
+                }
+              }
+              
               log("Getting HID service...");
               const hidService = await server.getPrimaryService('00001812-0000-1000-8000-00805f9b34fb');
               log("✓ HID service found");
