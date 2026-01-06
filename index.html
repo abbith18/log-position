@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-    <title>GPS Logger</title>
+    <title>Uložení GPS lokace</title>
 
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
@@ -74,11 +74,11 @@
           };
 
           const captureLocation = (trigger) => {
-            log("🎯 TRIGGER: " + trigger);
+            log("Použito: " + trigger);
             flash();
 
             if (!navigator.geolocation) {
-              log("❌ Geolocation not available");
+              log("Geolokace nedostupná!");
               return;
             }
 
@@ -94,24 +94,24 @@
                 locations.value.unshift(d);
                 try {
                   localStorage.setItem("gps_logs", JSON.stringify(locations.value));
-                  log("✓ Location saved: " + d.lat.toFixed(5) + ", " + d.lng.toFixed(5));
+                  log("✓ Lokace uložena: " + d.lat.toFixed(5) + ", " + d.lng.toFixed(5));
                 } catch (e) {
-                  log("⚠️ Storage error");
+                  log("Chyba úložiště");
                 }
               },
-              (e) => log("❌ GPS error: " + e.message),
+              (e) => log("Chyba GPS: " + e.message),
               { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
           };
 
           const connectBLE = async () => {
             if (!bluetoothAvailable.value) {
-              log("❌ Web Bluetooth not supported");
+              log("Rozhrání Web Bluetooth nepodporováno!");
               return;
             }
 
             bleConnecting.value = true;
-            log("🔍 Scanning for devices...");
+            log("Hledání zařízení...");
 
             try {
               bleDevice = await navigator.bluetooth.requestDevice({
@@ -318,4 +318,5 @@
     </script>
   </body>
 </html>
+
 
