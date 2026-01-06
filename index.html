@@ -17,6 +17,8 @@
       body {
         overscroll-behavior: contain;
         user-select: none;
+        margin: 0;
+        padding: 0;
       }
       .debug-console {
         font-family: monospace;
@@ -44,23 +46,22 @@
   </head>
 
   <body>
-    <div id="q-app" :class="{ flash: isFlashing }">
-      <q-layout view="lHh Lpr lFf">
+    <div id="q-app">
+      <q-layout view="lHh Lpr lFf" v-bind:class="{ flash: isFlashing }">
         <q-header elevated class="bg-primary text-white">
           <q-toolbar>
-            <q-icon name="my_location" class="q-mr-sm" />
+            <q-icon name="my_location" class="q-mr-sm"></q-icon>
             <q-toolbar-title>GPS Logger</q-toolbar-title>
-            <q-btn flat dense round icon="delete" @click="clearHistory" />
+            <q-btn flat dense round icon="delete" v-on:click="clearHistory"></q-btn>
           </q-toolbar>
         </q-header>
 
         <q-page-container>
           <q-page class="q-pa-md">
-            <!-- BLE Connection Card -->
             <q-card class="q-mb-md">
               <q-card-section>
                 <div class="text-h6 q-mb-sm">
-                  <q-icon name="bluetooth" />
+                  <q-icon name="bluetooth"></q-icon>
                   ESP32 Connection
                 </div>
                 
@@ -69,13 +70,13 @@
                   color="primary" 
                   icon="bluetooth_searching"
                   label="Connect to ESP32"
-                  @click="connectBLE"
-                  :loading="bleConnecting"
-                  :disable="!bluetoothAvailable"
-                />
+                  v-on:click="connectBLE"
+                  v-bind:loading="bleConnecting"
+                  v-bind:disable="!bluetoothAvailable"
+                ></q-btn>
                 
                 <div v-else class="text-positive">
-                  <q-icon name="check_circle" />
+                  <q-icon name="check_circle"></q-icon>
                   Connected to {{ bleDeviceName }}
                   <q-btn 
                     flat 
@@ -83,9 +84,9 @@
                     size="sm" 
                     color="negative" 
                     label="Disconnect"
-                    @click="disconnectBLE"
+                    v-on:click="disconnectBLE"
                     class="q-ml-sm"
-                  />
+                  ></q-btn>
                 </div>
 
                 <div v-if="!bluetoothAvailable" class="text-warning q-mt-sm text-caption">
@@ -95,19 +96,19 @@
             </q-card>
 
             <div class="debug-console q-mb-md">
-              <div v-for="(l,i) in logs" :key="i">> {{ l }}</div>
+              <div v-for="(l,i) in logs" v-bind:key="i">> {{ l }}</div>
             </div>
 
             <div class="text-center q-mb-md">
-              <q-btn round size="xl" color="secondary" icon="add_location" @click="captureLocation('Manual Tap')" />
+              <q-btn round size="xl" color="secondary" icon="add_location" v-on:click="captureLocation('Manual Tap')"></q-btn>
               <div class="text-caption q-mt-sm">Tap to capture location</div>
             </div>
 
             <q-list bordered separator v-if="locations.length > 0">
-              <q-item v-for="loc in locations" :key="loc.id">
+              <q-item v-for="loc in locations" v-bind:key="loc.id">
                 <q-item-section>
                   <q-item-label>{{ loc.lat.toFixed(5) }}, {{ loc.lng.toFixed(5) }}</q-item-label>
-                  <q-item-label caption> {{ loc.trigger }} • {{ new Date(loc.time).toLocaleTimeString() }} </q-item-label>
+                  <q-item-label caption>{{ loc.trigger }} • {{ new Date(loc.time).toLocaleTimeString() }}</q-item-label>
                 </q-item-section>
               </q-item>
             </q-list>
@@ -163,7 +164,7 @@
                   lat: pos.coords.latitude,
                   lng: pos.coords.longitude,
                   time: Date.now(),
-                  trigger,
+                  trigger: trigger
                 };
                 locations.value.unshift(d);
                 log("✓ Location saved");
@@ -188,9 +189,9 @@
                   { name: 'GPS Shutterer' }
                 ],
                 optionalServices: [
-                  '00001812-0000-1000-8000-00805f9b34fb', // HID Service
-                  '0000180f-0000-1000-8000-00805f9b34fb', // Battery Service
-                  '0000180a-0000-1000-8000-00805f9b34fb'  // Device Info
+                  '00001812-0000-1000-8000-00805f9b34fb',
+                  '0000180f-0000-1000-8000-00805f9b34fb',
+                  '0000180a-0000-1000-8000-00805f9b34fb'
                 ]
               });
 
@@ -243,7 +244,6 @@
               
               log(`Data: [${Array.from(data).map(b => b.toString(16).padStart(2, '0')).join(' ')}]`);
               
-              // Check for Enter key (0x28 in keyboard reports)
               if (data.length >= 3 && data[2] === 0x28) {
                 log("🔘 ESP32 BUTTON PRESSED!");
                 captureLocation("ESP32 Button");
@@ -298,9 +298,9 @@
             clearHistory() {
               locations.value = [];
               log("History cleared");
-            },
+            }
           };
-        },
+        }
       })
         .use(Quasar)
         .mount("#q-app");
